@@ -1,9 +1,6 @@
-from multiprocessing.connection import deliver_challenge
 import adafruit_dht as dht
 import board
 import time
-
-from pexpect import ExceptionPexpect
 
 device = dht.DHT22(board.D4)
 
