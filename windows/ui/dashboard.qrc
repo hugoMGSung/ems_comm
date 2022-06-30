@@ -1,6 +1,9 @@
 <RCC>
   <qresource prefix="/">
+    <file alias="green">green_24.png</file>
+    <file alias="red">red_24.png</file>
     <file alias="mist">mist_64.png</file>
+    <file alias="alarm">alarm_48.png</file>
     <file alias="temp">temp_128.png</file>
     <file alias="humid">humid_128.png</file>
     <file alias="sun">sun_64.png</file>
