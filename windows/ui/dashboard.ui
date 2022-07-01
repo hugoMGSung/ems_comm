@@ -476,7 +476,7 @@ border: none;</string>
      <widget class="QPushButton" name="btnTempAlarm">
       <property name="geometry">
        <rect>
-        <x>177</x>
+        <x>128</x>
         <y>278</y>
         <width>48</width>
         <height>48</height>
@@ -517,6 +517,24 @@ border: none;</string>
       </property>
       <property name="alignment">
        <set>Qt::AlignCenter</set>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="btnTempStop">
+      <property name="geometry">
+       <rect>
+        <x>184</x>
+        <y>278</y>
+        <width>48</width>
+        <height>48</height>
+       </rect>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">border-style: none;
+background-image: url(:/stop);
+background-repeat: no-repeat;</string>
+      </property>
+      <property name="text">
+       <string/>
       </property>
      </widget>
     </widget>

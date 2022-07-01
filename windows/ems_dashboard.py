@@ -9,6 +9,7 @@ import requests
 import json 
 import dashboard_rc # 리소스 py파일 추가
 import time
+import datetime as dt
 import paho.mqtt.client as mqtt # mqtt subscribe를 위해서 추가
 
 # pip install PyMySQL
@@ -51,8 +52,6 @@ class Worker(QThread):
         self.client.connect(self.host, self.port)
         self.client.subscribe(topic='ems/rasp/data/')
         self.client.loop_forever()
-
-
 
 class MyApp(QMainWindow):
     def __init__(self):
@@ -138,6 +137,15 @@ class MyApp(QMainWindow):
 
     def btnTempAlarmClicked(self):
         QMessageBox.information(self, '알람', '이상온도로 에어컨 가동')
+        self.client = mqtt.Client(client_id='Controller')
+        self.client.connect(broker_url, 1883)
+        curr = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        origin_data = {'DEV_ID':'CONTROL', 'CURR_DT' : curr,
+                       'TYPE': 'AIRCON', 'STAT' : 'ON' }  # AIRCON
+        pub_data = json.dumps(origin_data)
+        self.client.publish(topic='ems/rasp/control/',
+                            payload=pub_data)
+        print('AIRCON On Published')
     
     # 종료 메시지박스
     def closeEvent(self, signal):
