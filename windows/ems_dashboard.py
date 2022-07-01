@@ -15,6 +15,10 @@ import paho.mqtt.client as mqtt # mqtt subscribe를 위해서 추가
 # pip install PyMySQL
 import pymysql
 
+# pip install pyqtgraph
+# pip install pyqtchart
+from PyQt5.QtChart import *
+
 broker_url = '127.0.0.1' # 로컬에 MQTT broker가 같이 설치되어 있으므로 
 
 class Worker(QThread):
@@ -54,12 +58,40 @@ class Worker(QThread):
         self.client.loop_forever()
 
 class MyApp(QMainWindow):
+    isTempAlarmed = False  # 알람여부
+    isHumidAlarmed = False
+    tempData = humidData = None
+    idx = 0
+
     def __init__(self):
         super(MyApp, self).__init__()
         self.initUI()
         self.showTime()
         self.showWeather()
         self.initThread()
+        self.initChart()
+
+    def initChart(self):
+        # self.viewLimit = 128  # chart 그릴갯수 제한
+        self.tempData = self.humidData = QLineSeries()
+        # axisX = QDateTimeAxis()
+        # axisX.setFormat('HH:mm:ss')
+        # axisX.setTickCount(5)
+        # dt = QDateTime.currentDateTime()
+        # axisX.setRange(dt, dt.addSecs(self.viewLimit))
+        # axisY = QValueAxis()
+        
+        self.iotChart = QChart()
+        # self.iotChart.addAxis(axisX, Qt.AlignBottom)
+        # self.iotChart.addAxis(axisY, Qt.AlignLeft)
+        # self.tempData.attachAxis(axisX)
+        # self.humidData.attachAxis(axisX)
+        self.iotChart.addSeries(self.tempData)
+        # self.iotChart.addSeries(self.humidData)
+        self.iotChart.layout().setContentsMargins(5, 5, 5, 5)
+
+        self.dataView.setChart(self.iotChart)
+        self.dataView.setRenderHints(QPainter.Antialiasing)
         
     def initThread(self):
         self.myThread = Worker(self)
@@ -73,6 +105,9 @@ class MyApp(QMainWindow):
         # 2. Label에 Device명칭 업데이트
         # 3. 온도라벨, 습도라벨 현재 온도,습도 업데이트
         # 4. MySQL DB에 입력
+        # 5. 이상기온 알람
+        # 6. txbLog 로그 출력 / 다시 제거
+        # 7. Chart 데이터 추가
         print(data)
         dev_id = data['DEV_ID'] # 2.        
         self.lblTempTitle.setText(f'{dev_id} Temperature')
@@ -81,7 +116,31 @@ class MyApp(QMainWindow):
         humid = data['HUMID']
         self.lblCurrTemp.setText(f'{temp:.1f}')
         self.lblCurrHumid.setText(f'{humid:.0f}')
-        self.dialHumid.setValue(int(humid))
+        # self.txbLog.append(json.dumps(data))
+        # self.dialHumid.setValue(int(humid)) 220701 위젯 삭제
+        # 5.
+        if temp >= 30.0:            
+            self.lblTempAlarm.setText(f'{dev_id} 이상기온감지')
+            #self.btnTempAlarm.setEnabled(True) # 버튼활성화
+            #self.btnTempStop.setEnabled(False)
+            if self.isTempAlarmed == False:
+                self.isTempAlarmed = True
+                QMessageBox.warning(self, '경고', f'{dev_id}에서 이상기온감지!!!')
+
+        elif temp <= 26.5:
+            self.lblTempAlarm.setText(f'{dev_id} 정상기온')
+            self.isTempAlarmed = False
+            #self.btnTempAlarm.setEnabled(False) # 버튼비활성화
+            #self.btnTempStop.setEnabled(True)
+
+        if humid >= 85.0:
+            self.lblHumidAlarm.setText(f'{dev_id} 이상습도감지')
+            if self.isHumidAlarmed == False:
+                self.isHumidAlarmed = True
+                QMessageBox.warning(self, '경고', f'{dev_id}에서 이상습도감지!!!')
+        elif humid <= 65.0:
+            self.lblHumidAlarm.setText(f'{dev_id} 정상습도')
+            self.isHumidAlarmed = False
 
         # 4. DB입력
         self.conn = pymysql.connect(host='127.0.0.1',
@@ -101,7 +160,17 @@ class MyApp(QMainWindow):
                 cur.execute(query, (dev_id, curr_dt, temp, humid))
                 self.conn.commit()
                 print('DB Inserted!')
+        # chart 업데이트
+        self.updateChart(curr_dt, temp, humid)
 
+    def updateChart(self, curr_dt, temp, humid):
+        self.tempData.append(self.idx, temp)
+        self.humidData.append(self.idx, humid)
+
+        self.iotChart.removeSeries(self.tempData)
+        self.iotChart.addSeries(self.tempData)
+        self.dataView.setChart(self.iotChart)
+        print('Chart updated!!')
 
     @pyqtSlot(str)
     def updateStatus(self, stat):
@@ -123,7 +192,7 @@ class MyApp(QMainWindow):
                 'border: none;'
             )
 
-    def initUI(self):
+    def initUI(self):        
         uic.loadUi('./windows/ui/dashboard.ui', self)
         self.setWindowIcon(QIcon('iot_24.png'))
         # 화면 정중앙 위치
@@ -131,9 +200,40 @@ class MyApp(QMainWindow):
         cp = QDesktopWidget().availableGeometry().center()
         qr.moveCenter(cp)
         self.move(qr.topLeft())  # End of screen central position
+        #self.btnTempAlarm.setEnabled(False) # 버튼비활성화
+        #self.btnTempStop.setEnabled(True)
         # 위젯 시그널 정의
         self.btnTempAlarm.clicked.connect(self.btnTempAlarmClicked)
+        self.btnTempStop.clicked.connect(self.btnTempStopClicked)
+        self.btnHumidAlarm.clicked.connect(self.btnHumidAlarmClicked)
+        self.btnHumidStop.clicked.connect(self.btnHumidStopClicked)
         self.show()
+
+    def btnHumidAlarmClicked(self):
+        QMessageBox.information(self, '알람', '이상습도로 제습기 가동')
+        self.client = mqtt.Client(client_id='Controller')
+        self.client.connect(broker_url, 1883)
+        curr = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        origin_data = {'DEV_ID':'CONTROL', 'CURR_DT' : curr,
+                       'TYPE': 'DEHUMD', 'STAT' : 'ON' }  # DEHUMD
+        pub_data = json.dumps(origin_data)
+        self.client.publish(topic='ems/rasp/control/',
+                            payload=pub_data)
+        print('Dehumidufier On Published')
+        self.insertAlarmData('CONTROL', curr, 'DEHUMD', 'ON')
+    
+    def btnHumidStopClicked(self):
+        QMessageBox.information(self, '정상', '제습기 중지')
+        self.client = mqtt.Client(client_id='Controller')
+        self.client.connect(broker_url, 1883)
+        curr = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        origin_data = {'DEV_ID':'CONTROL', 'CURR_DT' : curr,
+                       'TYPE': 'DEHUMD', 'STAT' : 'OFF' }
+        pub_data = json.dumps(origin_data)
+        self.client.publish(topic='ems/rasp/control/',
+                            payload=pub_data)
+        print('Dehumidufier Off Published')
+        self.insertAlarmData('CONTROL', curr, 'DEHUMD', 'OFF')
 
     def btnTempAlarmClicked(self):
         QMessageBox.information(self, '알람', '이상온도로 에어컨 가동')
@@ -146,6 +246,39 @@ class MyApp(QMainWindow):
         self.client.publish(topic='ems/rasp/control/',
                             payload=pub_data)
         print('AIRCON On Published')
+        self.insertAlarmData('CONTROL', curr, 'AIRCON', 'ON')
+
+    def btnTempStopClicked(self):
+        QMessageBox.information(self, '정상', '에어컨 중지')
+        self.client = mqtt.Client(client_id='Controller')
+        self.client.connect(broker_url, 1883)
+        curr = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        origin_data = {'DEV_ID':'CONTROL', 'CURR_DT' : curr,
+                       'TYPE': 'AIRCON', 'STAT' : 'OFF' }
+        pub_data = json.dumps(origin_data)
+        self.client.publish(topic='ems/rasp/control/',
+                            payload=pub_data)
+        print('AIRCON Off Published')
+        self.insertAlarmData('CONTROL', curr, 'AIRCON', 'OFF')
+
+    # 이상상태,정상상태 DB저장함수
+    def insertAlarmData(self, dev_id, curr_dt, types, stat):
+        self.conn = pymysql.connect(host='127.0.0.1',
+                                    user='bms',
+                                    password='1234',
+                                    db='bms',
+                                    charset='euckr')
+
+        query = '''INSERT INTO ems_alarm
+                        (dev_id, curr_dt, type, stat)
+                    VALUES 
+                        (%s, %s, %s, %s) '''
+        
+        with self.conn:
+            with self.conn.cursor() as cur:
+                cur.execute(query, (dev_id, curr_dt, types, stat))
+                self.conn.commit()
+                print('Alarm Inserted!')
     
     # 종료 메시지박스
     def closeEvent(self, signal):
