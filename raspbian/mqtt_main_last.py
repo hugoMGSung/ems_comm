@@ -65,6 +65,10 @@ class subscriber(Thread):
             GPIO.output(RED, GPIO.HIGH)
         elif type == 'AIRCON' and stat == 'OFF':
             GPIO.output(RED, GPIO.LOW)
+        elif type == 'DEHUMD' and stat == 'ON':
+            GPIO.output(BLUE, GPIO.HIGH)
+        elif type == 'DEHUMD' and stat == 'OFF':
+            GPIO.output(BLUE, GPIO.LOW)
 
         time.sleep(1.0)
 
