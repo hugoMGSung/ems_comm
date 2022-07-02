@@ -17,9 +17,12 @@ import pymysql
 
 # pip install pyqtgraph
 # pip install pyqtchart
+import pyqtgraph as pg
+from pyqtgraph import PlotWidget
 from PyQt5.QtChart import *
+from collections import deque
 
-broker_url = '127.0.0.1' # 로컬에 MQTT broker가 같이 설치되어 있으므로 
+broker_url = 'localhost' # 로컬에 MQTT broker가 같이 설치되어 있으므로 
 
 class Worker(QThread):
     sigStatus = pyqtSignal(str) # 연결상태 시그널, 부모클래스 MyApp 전달용
@@ -62,6 +65,7 @@ class MyApp(QMainWindow):
     isHumidAlarmed = False
     tempData = humidData = None
     idx = 0
+    isTempShow = True
 
     def __init__(self):
         super(MyApp, self).__init__()
@@ -71,27 +75,47 @@ class MyApp(QMainWindow):
         self.initThread()
         self.initChart()
 
+    # 엄청 복잡합니다. 각오가 필요합니다 ^^
     def initChart(self):
-        # self.viewLimit = 128  # chart 그릴갯수 제한
-        self.tempData = self.humidData = QLineSeries()
-        # axisX = QDateTimeAxis()
-        # axisX.setFormat('HH:mm:ss')
-        # axisX.setTickCount(5)
-        # dt = QDateTime.currentDateTime()
-        # axisX.setRange(dt, dt.addSecs(self.viewLimit))
-        # axisY = QValueAxis()
-        
-        self.iotChart = QChart()
-        # self.iotChart.addAxis(axisX, Qt.AlignBottom)
-        # self.iotChart.addAxis(axisY, Qt.AlignLeft)
-        # self.tempData.attachAxis(axisX)
-        # self.humidData.attachAxis(axisX)
-        self.iotChart.addSeries(self.tempData)
-        # self.iotChart.addSeries(self.humidData)
-        self.iotChart.layout().setContentsMargins(5, 5, 5, 5)
+        self.btnTemp.clicked.connect(self.btnTempShowClicked)
+        self.btnHumid.clicked.connect(self.btnHumidShowClicked)
 
-        self.dataView.setChart(self.iotChart)
-        self.dataView.setRenderHints(QPainter.Antialiasing)
+        self.traces = dict()
+        self.timestamp = 0
+        self.timeaxis = [] # 시간축(x)
+        self.tempaxis = [] # 온도리스트
+        self.humidaxis = [] # 습도
+        self.graph_lim = 15 # 그래프 초기화
+        self.deque_timestamp = deque([], maxlen=self.graph_lim+20)
+        self.deque_temp = deque([], maxlen=self.graph_lim+20)
+        self.deque_humid = deque([], maxlen=self.graph_lim+20)
+
+        self.graphwidget1 = PlotWidget(title="Temperature")
+        x1_axis = self.graphwidget1.getAxis('bottom')
+        x1_axis.setLabel(text=' ')
+        y1_axis = self.graphwidget1.getAxis('left')
+        y1_axis.setLabel(text='Temp')
+
+        self.graphwidget2 = PlotWidget(title="Humidity")
+        x2_axis = self.graphwidget2.getAxis('bottom')
+        x2_axis.setLabel(text=' ')
+        y2_axis = self.graphwidget2.getAxis('left')
+        y2_axis.setLabel(text='Humid')
+
+        self.dataView.addWidget(self.graphwidget1, 0, 0, 0, 3)
+        self.dataView.addWidget(self.graphwidget2, 0, 0, 0, 3)
+        self.graphwidget1.show()
+        self.graphwidget2.hide()
+
+    def btnTempShowClicked(self):
+        self.graphwidget1.show()
+        self.graphwidget2.hide()
+        isTempShow = True
+
+    def btnHumidShowClicked(self):
+        self.graphwidget1.hide()
+        self.graphwidget2.show()
+        isTempShow = False
         
     def initThread(self):
         self.myThread = Worker(self)
@@ -143,34 +167,61 @@ class MyApp(QMainWindow):
             self.isHumidAlarmed = False
 
         # 4. DB입력
-        self.conn = pymysql.connect(host='127.0.0.1',
-                                    user='bms',
-                                    password='1234',
-                                    db='bms',
-                                    charset='euckr')
+        # self.conn = pymysql.connect(host='127.0.0.1',
+        #                             user='root',
+        #                             password='1234',
+        #                             db='bms',
+        #                             charset='euckr')
 
         curr_dt = data['CURR_DT']
-        query = '''INSERT INTO ems_data
-                        (dev_id, curr_dt, temp, humid)
-                    VALUES 
-                        (%s, %s, %s, %s) '''
+        # query = '''INSERT INTO ems_data
+        #                 (dev_id, curr_dt, temp, humid)
+        #             VALUES 
+        #                 (%s, %s, %s, %s) '''
         
-        with self.conn:
-            with self.conn.cursor() as cur:
-                cur.execute(query, (dev_id, curr_dt, temp, humid))
-                self.conn.commit()
-                print('DB Inserted!')
+        # with self.conn:
+        #     with self.conn.cursor() as cur:
+        #         cur.execute(query, (dev_id, curr_dt, temp, humid))
+        #         self.conn.commit()
+        #         print('DB Inserted!')
         # chart 업데이트
         self.updateChart(curr_dt, temp, humid)
 
     def updateChart(self, curr_dt, temp, humid):
-        self.tempData.append(self.idx, temp)
-        self.humidData.append(self.idx, humid)
+        self.timestamp += 1
 
-        self.iotChart.removeSeries(self.tempData)
-        self.iotChart.addSeries(self.tempData)
-        self.dataView.setChart(self.iotChart)
+        self.deque_timestamp.append(self.timestamp)
+        self.deque_temp.append(temp)
+        self.deque_humid.append(humid)
+
+        timeaxis_list = list(self.deque_timestamp)
+
+        if self.isTempShow == True:
+            temp_list = list(self.deque_temp)
+
+            if self.timestamp > self.graph_lim:
+                self.graphwidget1.setRange(xRange=[self.timestamp-self.graph_lim+1, self.timestamp], yRange=[
+                                        min(temp_list[-self.graph_lim:]), max(temp_list[-self.graph_lim:])])
+            self.set_plotdata(name="temp", data_x=timeaxis_list,
+                            data_y=temp_list)
+        else:
+            humid_list = list(self.deque_humid)
+
+            if self.timestamp > self.graph_lim:
+                self.graphwidget2.setRange(xRange=[self.timestamp-self.graph_lim+1, self.timestamp], yRange=[
+                                        min(humid_list[-self.graph_lim:]), max(humid_list[-self.graph_lim:])])
+            self.set_plotdata(name="humid", data_x=timeaxis_list,
+                            data_y=humid_list)
         print('Chart updated!!')
+
+    def set_plotdata(self, name, data_x, data_y):
+        # print('set_data')
+        if name in self.traces:
+            self.traces[name].setData(data_x, data_y)
+        else:
+            if name == "temp":
+                self.traces[name] = self.graphwidget1.getPlotItem().plot(
+                    pen=pg.mkPen((85, 170, 255), width=3))
 
     @pyqtSlot(str)
     def updateStatus(self, stat):
@@ -263,22 +314,24 @@ class MyApp(QMainWindow):
 
     # 이상상태,정상상태 DB저장함수
     def insertAlarmData(self, dev_id, curr_dt, types, stat):
-        self.conn = pymysql.connect(host='127.0.0.1',
-                                    user='bms',
-                                    password='1234',
-                                    db='bms',
-                                    charset='euckr')
+        pass
+        # self.conn = pymysql.connect(host='127.0.0.1',
+        #                             user='root',
+        #                             password='1234',
+        #                             db='bms',
+        #                             charset='euckr')
 
-        query = '''INSERT INTO ems_alarm
-                        (dev_id, curr_dt, type, stat)
-                    VALUES 
-                        (%s, %s, %s, %s) '''
+        # query = '''INSERT INTO ems_alarm
+        #                 (dev_id, curr_dt, type, stat)
+        #             VALUES 
+        #                 (%s, %s, %s, %s) '''
         
-        with self.conn:
-            with self.conn.cursor() as cur:
-                cur.execute(query, (dev_id, curr_dt, types, stat))
-                self.conn.commit()
-                print('Alarm Inserted!')
+        # with self.conn:
+        #     with self.conn.cursor() as cur:
+        #         cur.execute(query, (dev_id, curr_dt, types, stat))
+        #         self.conn.commit()
+        #         print('Alarm Inserted!')
+
     
     # 종료 메시지박스
     def closeEvent(self, signal):
