@@ -47,7 +47,7 @@ EMS 데이터 통신 및 제어프로그램
 
 ![대시보드실행화면](https://raw.githubusercontent.com/hugoMGSung/ems_comm/main/capture/dashboard2.png)
 
-대시보드 실행화면
+대시보드 실행화면 (실시간 온도차트는 습도와 통합 예정)
 
 
 ![네이버뉴스](https://raw.githubusercontent.com/hugoMGSung/ems_comm/main/capture/naver_news.png)
