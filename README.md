@@ -42,7 +42,7 @@ EMS 데이터 통신 및 제어프로그램
 
 ![라즈베리파이구성](https://raw.githubusercontent.com/hugoMGSung/ems_comm/main/capture/raspberrypi.png)
 
-라즈베리파이 구성
+라즈베리파이 구성 - RED LED는 이상온도 처리(에어컨 동작 대체) / BLUE LED는 이상습도 처리(제습기 동작 대체)
 
 
 ![대시보드실행화면](https://raw.githubusercontent.com/hugoMGSung/ems_comm/main/capture/dashboard2.png)
